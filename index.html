@@ -1,0 +1,683 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Sky Rangers: Wildfire Rescue</title>
+<style>
+  :root{
+    --sky-top:#1b2a4a; --sky-bot:#4a6fa5; --ui-bg:rgba(10,14,24,0.72);
+    --accent:#ffb703; --danger:#ff4d4d; --good:#4dff88; --water:#3aa0ff;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent; user-select:none;}
+  html,body{height:100%; margin:0; overflow:hidden; background:#000; font-family:'Segoe UI',Arial,sans-serif;
+    padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);}
+  #wrap{position:relative; width:100%; height:100%;}
+  canvas{display:block; width:100%; height:100%; touch-action:none;}
+
+  .hud{position:absolute; top:calc(10px + env(safe-area-inset-top,0px)); left:10px; right:10px;
+    display:flex; justify-content:space-between; gap:8px; pointer-events:none; z-index:5;}
+  .pill{background:var(--ui-bg); color:#fff; padding:6px 12px; border-radius:10px; font-size:13px;
+    font-weight:600; letter-spacing:.3px; backdrop-filter:blur(3px); white-space:nowrap;}
+  .bar-wrap{width:110px; height:10px; background:rgba(255,255,255,.2); border-radius:6px; overflow:hidden; margin-top:3px;}
+  .bar-fill{height:100%; border-radius:6px; transition:width .15s linear;}
+
+  #dropBtn{position:absolute; right:calc(16px + env(safe-area-inset-right,0px));
+    bottom:calc(20px + env(safe-area-inset-bottom,0px)); width:88px; height:88px; border-radius:50%;
+    background:radial-gradient(circle at 35% 30%, #5cc4ff, #1a7fd6); border:3px solid #fff;
+    color:#fff; font-weight:800; font-size:13px; z-index:6; box-shadow:0 4px 14px rgba(0,0,0,.4);}
+  #dropBtn:active{transform:scale(0.93);}
+  #dropBtn.disabled{opacity:.35;}
+
+  #muteBtn{position:absolute; left:calc(14px + env(safe-area-inset-left,0px));
+    bottom:calc(20px + env(safe-area-inset-bottom,0px)); width:46px; height:46px; border-radius:50%;
+    background:var(--ui-bg); color:#fff; border:2px solid rgba(255,255,255,.3); font-size:18px; z-index:6;}
+
+  .overlay{position:absolute; inset:0; background:rgba(4,8,18,.92); color:#fff; z-index:20;
+    display:flex; align-items:center; justify-content:center; padding:24px;
+    padding-top:calc(24px + env(safe-area-inset-top,0px)); padding-bottom:calc(24px + env(safe-area-inset-bottom,0px));}
+  .card{max-width:440px; width:100%; text-align:center;}
+  h1{font-size:28px; margin:0 0 4px; color:var(--accent);}
+  h2{font-size:18px; margin:18px 0 8px; color:var(--water);}
+  p{font-size:14.5px; line-height:1.5; color:#dfe6f2; margin:6px 0;}
+  .tip{background:rgba(255,183,3,.12); border:1px solid rgba(255,183,3,.4); border-radius:10px;
+    padding:10px 14px; margin:14px 0; font-size:13.5px; text-align:left;}
+  .tip b{color:var(--accent);}
+  button.big{background:var(--accent); color:#1b2a4a; border:none; border-radius:12px;
+    padding:14px 22px; font-size:16px; font-weight:800; margin:8px 6px; min-width:150px; cursor:pointer;}
+  button.ghost{background:transparent; color:#fff; border:2px solid rgba(255,255,255,.4);
+    border-radius:12px; padding:12px 20px; font-size:14px; font-weight:700; margin:8px 6px; cursor:pointer;}
+  .rowbtns{display:flex; flex-wrap:wrap; justify-content:center; margin-top:14px;}
+  .craftpick{display:flex; gap:10px; justify-content:center; flex-wrap:wrap; margin:14px 0;}
+  .craft{background:rgba(255,255,255,.06); border:2px solid rgba(255,255,255,.15); border-radius:12px;
+    padding:10px; width:118px; cursor:pointer; font-size:12px; color:#fff;}
+  .craft.sel{border-color:var(--accent); background:rgba(255,183,3,.15);}
+  .craft .emoji{font-size:30px;}
+  .stars{font-size:30px; letter-spacing:4px; margin:10px 0;}
+  #hidden{display:none;}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="game"></canvas>
+
+  <div class="hud" id="hud" style="display:none">
+    <div>
+      <div class="pill">💧 WATER<div class="bar-wrap"><div class="bar-fill" id="waterBar" style="width:0%;background:var(--water)"></div></div></div>
+    </div>
+    <div style="text-align:right">
+      <div class="pill">🔥 FIRE LEFT: <span id="firePct">100</span>%</div>
+      <div class="pill" style="margin-top:6px">⏱ <span id="timeLeft">90</span>s</div>
+    </div>
+  </div>
+
+  <button id="dropBtn">DROP<br>WATER</button>
+  <button id="muteBtn">🔊</button>
+
+  <!-- START SCREEN -->
+  <div class="overlay" id="startScreen">
+    <div class="card">
+      <h1>🚁 Sky Rangers</h1>
+      <p style="color:#fff;font-size:16px;font-weight:600;margin-top:-4px">Wildfire Rescue Academy</p>
+      <p>Fly a real firefighting aircraft. Scoop water from the lake, read the wind and smoke, and put out the wildfire before it spreads across the forest.</p>
+
+      <h2>Choose your aircraft</h2>
+      <div class="craftpick" id="craftPick"></div>
+
+      <h2>Choose your mission</h2>
+      <div class="craftpick" id="modePick"></div>
+
+      <div class="rowbtns">
+        <button class="big" id="startBtn">Start Mission</button>
+        <button class="ghost" id="howBtn">How to Play</button>
+      </div>
+      <p style="opacity:.6;font-size:11.5px;margin-top:14px">Educational simulation. Not a substitute for real aviation or wildfire-safety training.</p>
+    </div>
+  </div>
+
+  <!-- HOW TO PLAY -->
+  <div class="overlay" id="howScreen" style="display:none">
+    <div class="card">
+      <h1 style="font-size:22px">How to Play</h1>
+      <p>🕹 <b>Move:</b> drag anywhere on screen, or use arrow keys.</p>
+      <p>💧 <b>Scoop water:</b> fly low and slow over the lake until your tank fills.</p>
+      <p>🔥 <b>Drop water:</b> tap the blue DROP button (or Space) directly over fire.</p>
+      <p>💨 <b>Watch the wind arrow.</b> Real pilots drop slightly upwind so water lands on target, not past it.</p>
+      <div class="tip"><b>Real technique:</b> Aerial firefighters make several short, low, accurate drops rather than one big pass, this uses less water per unit of fire put out.</div>
+      <button class="big" id="closeHow">Got it</button>
+    </div>
+  </div>
+
+  <!-- BRIEFING (mid-mission tip) -->
+  <div class="overlay" id="briefScreen" style="display:none">
+    <div class="card">
+      <h2 id="briefTitle">Ranger Briefing</h2>
+      <div class="tip" id="briefText"></div>
+      <button class="big" id="briefContinue">Continue Mission</button>
+    </div>
+  </div>
+
+  <!-- END SCREEN -->
+  <div class="overlay" id="endScreen" style="display:none">
+    <div class="card">
+      <h1 id="endTitle" style="font-size:24px">Mission Complete</h1>
+      <div class="stars" id="endStars">⭐⭐⭐</div>
+      <p id="endSummary"></p>
+      <div class="tip" id="endTip"></div>
+      <p style="font-size:12.5px;opacity:.7">Best forest saved: <b id="bestScore">0%</b></p>
+      <div class="rowbtns">
+        <button class="big" id="retryBtn">Fly Again</button>
+        <button class="ghost" id="menuBtn">Change Mission</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+"use strict";
+
+/* ---------- Canvas setup ---------- */
+const cv = document.getElementById('game');
+const ctx = cv.getContext('2d');
+function resize(){ cv.width = innerWidth * devicePixelRatio; cv.height = innerHeight * devicePixelRatio;
+  cv.style.width = innerWidth+'px'; cv.style.height = innerHeight+'px'; ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0); }
+addEventListener('resize', resize); resize();
+
+/* ---------- Audio (Web Audio, no assets) ---------- */
+let audioCtx=null, muted=false;
+function ac(){ if(!audioCtx) audioCtx = new (window.AudioContext||window.webkitAudioContext)(); return audioCtx; }
+function beep(freq,dur,type='sine',vol=0.15){
+  if(muted) return;
+  try{
+    const a=ac(); const o=a.createOscillator(); const g=a.createGain();
+    o.type=type; o.frequency.value=freq; g.gain.value=vol;
+    o.connect(g); g.connect(a.destination);
+    o.start(); g.gain.exponentialRampToValueAtTime(0.0001, a.currentTime+dur);
+    o.stop(a.currentTime+dur);
+  }catch(e){}
+}
+function sfxSplash(){ beep(320,.25,'sine',.18); beep(500,.15,'sine',.1);}
+function sfxFizzle(){ beep(180,.35,'sawtooth',.12);}
+function sfxSiren(){ beep(700,.12,'square',.06);}
+function sfxWin(){ [523,659,784].forEach((f,i)=>setTimeout(()=>beep(f,.3,'sine',.15), i*130)); }
+function sfxLose(){ beep(200,.5,'sawtooth',.12); }
+document.getElementById('muteBtn').onclick=(e)=>{ muted=!muted; e.target.textContent = muted?'🔇':'🔊'; };
+
+/* ---------- Aircraft data ---------- */
+const CRAFT = {
+  heli:  {name:'Rescue Heli', emoji:'🚁', speed:4.6, tank:100, fillRate:1.6, dropRadius:46, agile:true},
+  scoop: {name:'Water Scooper', emoji:'🛩️', speed:6.0, tank:140, fillRate:2.2, dropRadius:60, agile:false},
+  tanker:{name:'Heavy Tanker', emoji:'✈️', speed:7.2, tank:220, fillRate:3.0, dropRadius:80, agile:false}
+};
+const MODES = {
+  cadet:  {name:'Cadet', spreadMult:0.55, windMult:0.3, time:110, label:'Slow fire, light wind'},
+  ranger: {name:'Ranger', spreadMult:1.0, windMult:0.7, time:90,  label:'Realistic spread & wind'},
+  ace:    {name:'Sky Ace', spreadMult:1.55, windMult:1.2, time:75, label:'Fast spread, strong wind'}
+};
+let craftKey='heli', modeKey='ranger';
+
+/* build picker UI */
+function buildPickers(){
+  const cp=document.getElementById('craftPick'); cp.innerHTML='';
+  Object.entries(CRAFT).forEach(([k,c])=>{
+    const d=document.createElement('div'); d.className='craft'+(k===craftKey?' sel':'');
+    d.innerHTML=`<div class="emoji">${c.emoji}</div><div>${c.name}</div>`;
+    d.onclick=()=>{craftKey=k; buildPickers();};
+    cp.appendChild(d);
+  });
+  const mp=document.getElementById('modePick'); mp.innerHTML='';
+  Object.entries(MODES).forEach(([k,m])=>{
+    const d=document.createElement('div'); d.className='craft'+(k===modeKey?' sel':'');
+    d.innerHTML=`<div style="font-size:15px;font-weight:800">${m.name}</div><div style="opacity:.75;margin-top:4px">${m.label}</div>`;
+    d.onclick=()=>{modeKey=k; buildPickers();};
+    mp.appendChild(d);
+  });
+}
+buildPickers();
+
+/* ---------- Educational tips (shown mid-mission, and used as fallback facts) ---------- */
+const TIPS = [
+  {t:"Reading Smoke Colour", b:"Pilots watch smoke colour to judge a fire: thin white/grey smoke usually means lighter fuel like grass, while thick black or dark smoke means heavier fuel and a faster-growing fire."},
+  {t:"Drop Upwind", b:"Water dropped from the air drifts as it falls. Pilots aim slightly upwind of the target so wind carries the water onto the fire, not past it."},
+  {t:"Short, Low, Accurate Passes", b:"Several short, accurate drops usually put out more fire per litre than one big drop from height, because the water lands where it's needed instead of scattering."},
+  {t:"Firebreaks", b:"A firebreak is a strip of cleared land with no fuel to burn. Aircraft often support ground crews by cooling the fire's edge near a firebreak so it can't jump across."},
+  {t:"Never Leave a Fire Unattended", b:"Most wildfires are started by people. Never leaving a campfire or barbecue unattended, and fully dousing it before you leave, prevents a huge number of fires before they ever start."},
+  {t:"Clear Space Around Your Home", b:"Keeping dry leaves, brush and firewood away from your house creates \u2018defensible space,\u2019 giving firefighters a real chance to protect it if a wildfire gets close."},
+  {t:"Wind Direction Changes Everything", b:"A wildfire's direction of travel is driven mainly by wind. Pilots and ground crews constantly recheck wind direction, since a shift can send a fire somewhere completely different within minutes."}
+];
+function randTip(){ return TIPS[Math.floor(Math.random()*TIPS.length)]; }
+
+/* ---------- Game world ---------- */
+let W=0,H=0;
+const GRID=28; // fire grid resolution
+let gridW, gridH, fireGrid, fuelGrid; // 0..1 fire intensity, 0/1 fuel present
+let lake={x:0,y:0,w:0,h:0};
+let trees=[];
+let wind={angle:0, strength:0};
+let plane={x:0,y:0,vx:0,vy:0,water:0,tankMax:100,heading:0};
+let dragging=false, dragTarget=null;
+let keys={};
+let timeLeft=90, missionTotalTime=90, initialFireCells=0;
+let running=false, ended=false;
+let briefShown=false;
+let bestSaved = parseFloat(localStorage.getItem('sr_best')||'0');
+document.getElementById('bestScore').textContent = Math.round(bestSaved)+'%';
+
+function cellToPx(cx,cy){ return {x:(cx+0.5)*(W/gridW), y:(cy+0.5)*(H/gridH)}; }
+
+function initWorld(){
+  W = innerWidth; H = innerHeight;
+  gridW = GRID; gridH = Math.round(GRID*(H/W));
+  fireGrid = new Float32Array(gridW*gridH);
+  fuelGrid = new Uint8Array(gridW*gridH).fill(1);
+
+  lake = {x:W*0.06, y:H*0.68, w:W*0.34, h:H*0.24};
+  // no fuel over lake
+  for(let gy=0; gy<gridH; gy++) for(let gx=0; gx<gridW; gx++){
+    const p=cellToPx(gx,gy);
+    if(p.x>lake.x && p.x<lake.x+lake.w && p.y>lake.y && p.y<lake.y+lake.h) fuelGrid[gy*gridW+gx]=0;
+  }
+  // trees for visuals: mix of pines and round canopy, varied size/tone for depth
+  trees=[];
+  for(let i=0;i<190;i++){
+    const x=Math.random()*W, y=Math.random()*H;
+    if(x>lake.x-24 && x<lake.x+lake.w+24 && y>lake.y-24 && y<lake.y+lake.h+24) continue;
+    const depth = 0.55+Math.random()*0.9; // smaller/lighter = further away
+    trees.push({
+      x,y, s:(9+Math.random()*11)*depth, depth,
+      type: Math.random()<0.55?'pine':'round',
+      tone: Math.random()
+    });
+  }
+  trees.sort((a,b)=>a.y-b.y);
+
+  // ignite a cluster of fire cells away from the lake
+  const mode=MODES[modeKey];
+  const startX = Math.floor(gridW*(0.55+Math.random()*0.3));
+  const startY = Math.floor(gridH*(0.2+Math.random()*0.3));
+  initialFireCells=0;
+  for(let dy=-1; dy<=1; dy++) for(let dx=-1; dx<=1; dx++){
+    const gx=startX+dx, gy=startY+dy;
+    if(gx>=0&&gx<gridW&&gy>=0&&gy<gridH){ fireGrid[gy*gridW+gx]=1; initialFireCells++; }
+  }
+
+  wind.angle = Math.random()*Math.PI*2;
+  wind.strength = (0.4+Math.random()*0.6) * mode.windMult;
+
+  const c=CRAFT[craftKey];
+  plane.x=lake.x+lake.w/2; plane.y=lake.y+lake.h/2; plane.vx=0; plane.vy=0;
+  plane.water=0; plane.tankMax=c.tank; plane.heading=0;
+
+  timeLeft = mode.time; missionTotalTime=mode.time;
+  running=true; ended=false; briefShown=false;
+}
+
+/* ---------- Fire simulation ---------- */
+let fireTimer=0;
+function stepFire(dt){
+  const mode=MODES[modeKey];
+  fireTimer+=dt;
+  if(fireTimer<0.4) return; // simulate a few times per second
+  fireTimer=0;
+  const next=fireGrid.slice();
+  for(let gy=0; gy<gridH; gy++) for(let gx=0; gx<gridW; gx++){
+    const i=gy*gridW+gx;
+    if(fireGrid[i]<=0) continue;
+    // burn down slowly (fuel consumed) unless very intense
+    next[i] = Math.max(0, fireGrid[i]-0.015);
+    // spread to neighbours with some chance, biased by wind
+    const nbrs=[[1,0],[-1,0],[0,1],[0,-1],[1,1],[-1,-1],[1,-1],[-1,1]];
+    for(const [dx,dy] of nbrs){
+      const nx=gx+dx, ny=gy+dy;
+      if(nx<0||nx>=gridW||ny<0||ny>=gridH) continue;
+      const j=ny*gridW+nx;
+      if(fuelGrid[j]===0 || fireGrid[j]>0.05) continue;
+      const dot = Math.cos(Math.atan2(dy,dx)-wind.angle);
+      const chance = 0.02*mode.spreadMult*(1+wind.strength*Math.max(0,dot)*1.6) * fireGrid[i];
+      if(Math.random()<chance) next[j]=Math.max(next[j],0.6);
+    }
+  }
+  fireGrid=next;
+}
+
+function fireRemainingPct(){
+  let burning=0, everBurnable=0;
+  for(let i=0;i<fireGrid.length;i++){ if(fuelGrid[i]) everBurnable++; if(fireGrid[i]>0.03) burning++; }
+  return burning; // raw count, converted elsewhere
+}
+let peakBurning=0;
+
+/* ---------- Input ---------- */
+function pointerToWorld(e){
+  const r=cv.getBoundingClientRect();
+  const px=(e.touches?e.touches[0].clientX:e.clientX)-r.left;
+  const py=(e.touches?e.touches[0].clientY:e.clientY)-r.top;
+  return {x:px,y:py};
+}
+cv.addEventListener('pointerdown', e=>{ dragging=true; dragTarget=pointerToWorld(e); ac(); });
+cv.addEventListener('pointermove', e=>{ if(dragging) dragTarget=pointerToWorld(e); });
+cv.addEventListener('pointerup', ()=>{ dragging=false; });
+cv.addEventListener('pointerleave', ()=>{ dragging=false; });
+addEventListener('keydown', e=>{ keys[e.key]=true; if(e.key===' ') doDrop(); });
+addEventListener('keyup', e=>{ keys[e.key]=false; });
+
+document.getElementById('dropBtn').onclick=()=>{ ac(); doDrop(); };
+
+function doDrop(){
+  if(!running||ended) return;
+  if(plane.water<10) return;
+  const used=Math.min(plane.water, plane.tankMax*0.4);
+  plane.water-=used;
+  const c=CRAFT[craftKey];
+  const drift = 18; // pixels drift downwind, teaches upwind aiming
+  const dropX = plane.x + Math.cos(wind.angle)*drift;
+  const dropY = plane.y + Math.sin(wind.angle)*drift;
+  let hit=false;
+  const radCells = Math.max(1, Math.round(c.dropRadius/(W/gridW)));
+  const gcx=Math.floor(dropX/(W/gridW)), gcy=Math.floor(dropY/(H/gridH));
+  for(let dy=-radCells; dy<=radCells; dy++) for(let dx=-radCells; dx<=radCells; dx++){
+    const gx=gcx+dx, gy=gcy+dy;
+    if(gx<0||gx>=gridW||gy<0||gy>=gridH) continue;
+    if(dx*dx+dy*dy> radCells*radCells) continue;
+    const i=gy*gridW+gx;
+    if(fireGrid[i]>0){ fireGrid[i]=Math.max(0,fireGrid[i]-0.9); hit=true; }
+  }
+  if(hit) sfxFizzle(); else sfxSplash();
+  splashFx.push({x:dropX,y:dropY,t:0});
+}
+let splashFx=[];
+
+/* ---------- Update / physics ---------- */
+function update(dt){
+  if(!running||ended) return;
+  const c=CRAFT[craftKey];
+
+  // steering: drag target or keys
+  let tx=null,ty=null;
+  if(dragging && dragTarget){ tx=dragTarget.x; ty=dragTarget.y; }
+  if(tx!==null){
+    const ddx=tx-plane.x, ddy=ty-plane.y;
+    const dist=Math.hypot(ddx,ddy)||1;
+    plane.vx += (ddx/dist)*c.speed*1.1*dt*10;
+    plane.vy += (ddy/dist)*c.speed*1.1*dt*10;
+  }
+  let ax=0,ay=0;
+  if(keys['ArrowLeft']) ax-=1; if(keys['ArrowRight']) ax+=1;
+  if(keys['ArrowUp']) ay-=1; if(keys['ArrowDown']) ay+=1;
+  plane.vx += ax*c.speed*dt*26; plane.vy += ay*c.speed*dt*26;
+
+  plane.vx*=0.92; plane.vy*=0.92;
+  const spd=Math.hypot(plane.vx,plane.vy), maxSpd=c.speed*68;
+  if(spd>maxSpd){ plane.vx=plane.vx/spd*maxSpd; plane.vy=plane.vy/spd*maxSpd; }
+  plane.x+=plane.vx*dt; plane.y+=plane.vy*dt;
+  plane.x=Math.max(20,Math.min(W-20,plane.x));
+  plane.y=Math.max(20,Math.min(H-20,plane.y));
+  if(spd>4) plane.heading=Math.atan2(plane.vy,plane.vx);
+
+  // scoop water over lake
+  const overLake = plane.x>lake.x&&plane.x<lake.x+lake.w&&plane.y>lake.y&&plane.y<lake.y+lake.h;
+  if(overLake && plane.water<plane.tankMax){
+    plane.water=Math.min(plane.tankMax, plane.water + c.fillRate*30*dt);
+  }
+
+  stepFire(dt);
+  const burning=fireRemainingPct();
+  peakBurning=Math.max(peakBurning,burning);
+  document.getElementById('firePct').textContent = peakBurning>0? Math.max(0,Math.round(100*burning/Math.max(peakBurning,initialFireCells))) : 0;
+  document.getElementById('waterBar').style.width = Math.round(100*plane.water/plane.tankMax)+'%';
+  document.getElementById('dropBtn').classList.toggle('disabled', plane.water<10);
+
+  // occasional siren if fire growing fast
+  if(Math.random()<0.01 && burning>initialFireCells*1.5) sfxSiren();
+
+  // mid-mission briefing once, around 55% time elapsed
+  const elapsedFrac = 1-(timeLeft/missionTotalTime);
+  if(!briefShown && elapsedFrac>0.5){
+    briefShown=true; running=false;
+    showBrief();
+  }
+
+  timeLeft-=dt;
+  if(timeLeft<=0 || burning===0){ endMission(burning===0); }
+}
+
+function showBrief(){
+  const tip=randTip();
+  document.getElementById('briefTitle').textContent='Ranger Briefing: '+tip.t;
+  document.getElementById('briefText').innerHTML='<b>'+tip.t+':</b> '+tip.b;
+  document.getElementById('briefScreen').style.display='flex';
+}
+document.getElementById('briefContinue').onclick=()=>{
+  document.getElementById('briefScreen').style.display='none'; running=true;
+};
+
+/* ---------- Draw ---------- */
+function drawBg(){
+  const g=ctx.createLinearGradient(0,0,0,H);
+  g.addColorStop(0,'#8fc7f0'); g.addColorStop(0.35,'#bfe3c9'); g.addColorStop(0.6,'#9dc98a'); g.addColorStop(1,'#5f9a52');
+  ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+  // sun glow
+  const sun=ctx.createRadialGradient(W*0.85,H*0.14,4,W*0.85,H*0.14,90);
+  sun.addColorStop(0,'rgba(255,250,210,.85)'); sun.addColorStop(1,'rgba(255,250,210,0)');
+  ctx.fillStyle=sun; ctx.beginPath(); ctx.arc(W*0.85,H*0.14,90,0,7); ctx.fill();
+  // soft ground texture bands
+  ctx.fillStyle='rgba(255,255,255,.05)';
+  for(let i=0;i<4;i++){ ctx.fillRect(0, H*0.35+i*H*0.14, W, 3); }
+}
+function drawLake(){
+  const t=Date.now()/1000;
+  const g=ctx.createLinearGradient(lake.x,lake.y,lake.x,lake.y+lake.h);
+  g.addColorStop(0,'#bfe6ff'); g.addColorStop(0.4,'#4fa6dd'); g.addColorStop(1,'#1c5f92');
+  ctx.save();
+  roundRect(lake.x,lake.y,lake.w,lake.h,20); ctx.clip();
+  ctx.fillStyle=g; ctx.fillRect(lake.x,lake.y,lake.w,lake.h);
+  // reflected sky highlight
+  ctx.fillStyle='rgba(255,255,255,.22)';
+  roundRect(lake.x+lake.w*0.08,lake.y+lake.h*0.1,lake.w*0.4,lake.h*0.16,10); ctx.fill();
+  // animated ripple lines
+  ctx.strokeStyle='rgba(255,255,255,.35)'; ctx.lineWidth=2;
+  for(let i=0;i<5;i++){
+    const ry=lake.y+lake.h*(0.25+i*0.15)+Math.sin(t*1.3+i)*3;
+    ctx.beginPath();
+    for(let x=lake.x; x<lake.x+lake.w; x+=10){
+      const yy=ry+Math.sin(x*0.05+t*2+i)*2;
+      x===lake.x? ctx.moveTo(x,yy) : ctx.lineTo(x,yy);
+    }
+    ctx.stroke();
+  }
+  ctx.restore();
+  // shoreline
+  ctx.strokeStyle='rgba(255,255,255,.5)'; ctx.lineWidth=3;
+  roundRect(lake.x,lake.y,lake.w,lake.h,20); ctx.stroke();
+  ctx.fillStyle='#7a6a4f';
+  roundRect(lake.x-4,lake.y-4,lake.w+8,lake.h+8,22); ctx.globalCompositeOperation='destination-over'; ctx.fill(); ctx.globalCompositeOperation='source-over';
+}
+function roundRect(x,y,w,h,r){ ctx.beginPath(); ctx.moveTo(x+r,y);
+  ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r);
+  ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
+
+function drawOneTree(t){
+  const s=t.s, shade = 0.75+t.tone*0.4;
+  // shadow
+  ctx.fillStyle='rgba(20,30,10,.18)';
+  ctx.beginPath(); ctx.ellipse(t.x+s*0.15, t.y+s*0.65, s*0.9, s*0.28, 0,0,7); ctx.fill();
+  if(t.type==='pine'){
+    // trunk
+    ctx.fillStyle='#5b3d22';
+    ctx.fillRect(t.x-s*0.08, t.y+s*0.15, s*0.16, s*0.55);
+    // layered triangular canopy, darker to lighter
+    const layers=[ [1.05,'#1f4a26'], [0.78,'#2c6335'], [0.5,'#3f7d43'] ];
+    layers.forEach(([f,col],i)=>{
+      ctx.fillStyle=`rgba(${hexToRgb(col)},${shade})`;
+      const w=s*1.15*f, topY=t.y-s*1.5+ i*s*0.55, botY=t.y-s*0.15+ i*s*0.4;
+      ctx.beginPath(); ctx.moveTo(t.x, topY); ctx.lineTo(t.x-w/2, botY); ctx.lineTo(t.x+w/2, botY); ctx.closePath(); ctx.fill();
+    });
+  }else{
+    // trunk
+    ctx.fillStyle='#5b3d22';
+    ctx.fillRect(t.x-s*0.07, t.y+s*0.1, s*0.14, s*0.45);
+    // round layered canopy
+    ctx.fillStyle=`rgba(${hexToRgb('#2c6335')},${shade})`;
+    ctx.beginPath(); ctx.arc(t.x, t.y-s*0.45, s*0.95, 0,7); ctx.fill();
+    ctx.fillStyle=`rgba(${hexToRgb('#3f8a49')},${shade})`;
+    ctx.beginPath(); ctx.arc(t.x-s*0.35, t.y-s*0.65, s*0.62, 0,7); ctx.fill();
+    ctx.beginPath(); ctx.arc(t.x+s*0.4, t.y-s*0.6, s*0.58, 0,7); ctx.fill();
+    ctx.fillStyle=`rgba(${hexToRgb('#5aa85f')},${shade})`;
+    ctx.beginPath(); ctx.arc(t.x-s*0.1, t.y-s*0.95, s*0.5, 0,7); ctx.fill();
+  }
+}
+function hexToRgb(h){ const n=parseInt(h.slice(1),16); return `${(n>>16)&255},${(n>>8)&255},${n&255}`; }
+function drawTrees(){ trees.forEach(drawOneTree); }
+
+/* ---------- Smoke particles ---------- */
+let smokeFx=[];
+function spawnSmoke(x,y){
+  smokeFx.push({x,y,vy:-18-Math.random()*10,vx:(Math.random()-0.5)*8,r:6+Math.random()*6,life:0,max:2.4+Math.random()*1.2});
+}
+function updateSmoke(dt){
+  smokeFx.forEach(s=>{ s.life+=dt; s.x+=s.vx*dt; s.y+=s.vy*dt; s.vy*=0.995; s.r+=dt*9; });
+  smokeFx=smokeFx.filter(s=>s.life<s.max);
+}
+function drawSmoke(){
+  smokeFx.forEach(s=>{
+    const a=Math.max(0,1-s.life/s.max)*0.35;
+    ctx.fillStyle=`rgba(70,70,75,${a})`;
+    ctx.beginPath(); ctx.arc(s.x,s.y,s.r,0,7); ctx.fill();
+  });
+}
+
+function drawFire(){
+  const cw=W/gridW, ch=H/gridH, t=Date.now()/120;
+  for(let gy=0; gy<gridH; gy++) for(let gx=0; gx<gridW; gx++){
+    const v=fireGrid[gy*gridW+gx]; if(v<=0.02) continue;
+    const cx=gx*cw+cw/2, cy=gy*ch+ch/2;
+    if(Math.random()<0.04*v) spawnSmoke(cx, cy-ch*0.6);
+    const flick=0.75+0.25*Math.sin(t+gx*1.7+gy*0.9);
+    const baseR=cw*0.62*flick*v;
+    // glow
+    const glow=ctx.createRadialGradient(cx,cy,0,cx,cy,baseR*2.2);
+    glow.addColorStop(0,`rgba(255,150,30,${0.35*v})`); glow.addColorStop(1,'rgba(255,150,30,0)');
+    ctx.fillStyle=glow; ctx.beginPath(); ctx.arc(cx,cy,baseR*2.2,0,7); ctx.fill();
+    // flame body: teardrop shapes, outer red -> inner yellow
+    drawFlame(cx,cy,baseR,'#b3230d', v);
+    drawFlame(cx,cy-baseR*0.15,baseR*0.68,'#ff7a1a', v);
+    drawFlame(cx,cy-baseR*0.28,baseR*0.38,'#ffd23f', v);
+  }
+  updateSmoke(1/60); drawSmoke();
+}
+function drawFlame(x,y,r,color,alphaMul){
+  ctx.fillStyle = color; ctx.globalAlpha = Math.min(1,alphaMul+0.15);
+  ctx.beginPath();
+  ctx.moveTo(x, y-r*1.3);
+  ctx.bezierCurveTo(x+r*0.9, y-r*0.4, x+r*0.55, y+r*0.7, x, y+r*0.85);
+  ctx.bezierCurveTo(x-r*0.55, y+r*0.7, x-r*0.9, y-r*0.4, x, y-r*1.3);
+  ctx.fill();
+  ctx.globalAlpha=1;
+}
+function drawWind(){
+  const cx=W-60, cy=70;
+  ctx.save(); ctx.translate(cx,cy); ctx.rotate(wind.angle);
+  ctx.strokeStyle='#fff'; ctx.lineWidth=3;
+  ctx.beginPath(); ctx.moveTo(-16,0); ctx.lineTo(16,0); ctx.moveTo(16,0); ctx.lineTo(8,-6); ctx.moveTo(16,0); ctx.lineTo(8,6); ctx.stroke();
+  ctx.restore();
+  ctx.fillStyle='#fff'; ctx.font='11px Arial'; ctx.textAlign='center';
+  ctx.fillText('WIND', cx, cy+26);
+}
+function drawSplashes(dt){
+  splashFx.forEach(s=>s.t+=dt);
+  splashFx=splashFx.filter(s=>s.t<0.5);
+  splashFx.forEach(s=>{
+    ctx.strokeStyle=`rgba(150,210,255,${1-s.t/0.5})`; ctx.lineWidth=3;
+    ctx.beginPath(); ctx.arc(s.x,s.y, 10+s.t*60, 0,7); ctx.stroke();
+  });
+}
+let rotorSpin=0;
+function drawPlane(){
+  const spd=Math.hypot(plane.vx,plane.vy);
+  rotorSpin += (0.35+spd*0.02);
+  // shadow (fixed to ground, doesn't rotate)
+  ctx.fillStyle='rgba(0,0,0,.18)';
+  ctx.beginPath(); ctx.ellipse(plane.x+4,plane.y+18,16,5,0,0,7); ctx.fill();
+
+  ctx.save(); ctx.translate(plane.x,plane.y);
+  const heading = plane.heading;
+  ctx.rotate(heading);
+  if(craftKey==='heli') drawHeli();
+  else drawFixedWing(craftKey==='tanker');
+  ctx.restore();
+}
+
+function drawHeli(){
+  // body facing +x (nose right)
+  ctx.fillStyle='#d1352b';
+  ctx.beginPath();
+  ctx.ellipse(0,0,15,7,0,0,7); ctx.fill();
+  // canopy
+  ctx.fillStyle='rgba(200,235,255,.85)';
+  ctx.beginPath(); ctx.ellipse(7,-1,6,4.5,0,0,7); ctx.fill();
+  // tail boom
+  ctx.fillStyle='#b32a22';
+  ctx.beginPath(); ctx.moveTo(-14,-1.5); ctx.lineTo(-30,-2.5); ctx.lineTo(-30,1.5); ctx.lineTo(-14,2); ctx.closePath(); ctx.fill();
+  // tail fin
+  ctx.beginPath(); ctx.moveTo(-30,-2.5); ctx.lineTo(-34,-8); ctx.lineTo(-30,-1); ctx.closePath(); ctx.fill();
+  // tail rotor blur
+  ctx.strokeStyle='rgba(60,60,60,.5)'; ctx.lineWidth=1.5;
+  ctx.beginPath(); ctx.ellipse(-31,-5,1.5,6,0,0,7); ctx.stroke();
+  // skids
+  ctx.strokeStyle='#333'; ctx.lineWidth=1.6;
+  ctx.beginPath(); ctx.moveTo(-9,7); ctx.lineTo(9,7); ctx.moveTo(-8,5); ctx.lineTo(-8,7); ctx.moveTo(8,5); ctx.lineTo(8,7); ctx.stroke();
+  // water bucket line beneath (hints at firefighting role)
+  ctx.strokeStyle='rgba(80,80,80,.6)'; ctx.beginPath(); ctx.moveTo(0,7); ctx.lineTo(0,13); ctx.stroke();
+  ctx.fillStyle='#3aa0ff'; ctx.beginPath(); ctx.ellipse(0,15,4,2.6,0,0,7); ctx.fill();
+  // main rotor mast + spinning blur disc
+  ctx.fillStyle='#222'; ctx.fillRect(-1.2,-9,2.4,4);
+  ctx.save(); ctx.rotate(rotorSpin);
+  ctx.strokeStyle='rgba(40,40,40,.55)'; ctx.lineWidth=2.2;
+  ctx.beginPath(); ctx.moveTo(-26,0); ctx.lineTo(26,0); ctx.stroke();
+  ctx.strokeStyle='rgba(40,40,40,.35)';
+  ctx.beginPath(); ctx.ellipse(0,0,26,3,0,0,7); ctx.stroke();
+  ctx.restore();
+}
+
+function drawFixedWing(heavy){
+  const L = heavy?1.5:1;
+  ctx.fillStyle= heavy? '#d13a2b' : '#e0592b';
+  // fuselage
+  ctx.beginPath();
+  ctx.ellipse(0,0,16*L,5.5*L,0,0,7); ctx.fill();
+  // nose highlight
+  ctx.fillStyle='rgba(255,255,255,.55)';
+  ctx.beginPath(); ctx.ellipse(10*L,-1,4*L,2*L,0,0,7); ctx.fill();
+  // wings
+  ctx.fillStyle= heavy? '#b8291d':'#c94a20';
+  ctx.beginPath();
+  ctx.moveTo(-2*L,-3*L); ctx.lineTo(-6*L,-22*L); ctx.lineTo(1*L,-20*L); ctx.lineTo(4*L,-3*L); ctx.closePath(); ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(-2*L,3*L); ctx.lineTo(-6*L,22*L); ctx.lineTo(1*L,20*L); ctx.lineTo(4*L,3*L); ctx.closePath(); ctx.fill();
+  // tail
+  ctx.beginPath();
+  ctx.moveTo(-14*L,-1.5*L); ctx.lineTo(-19*L,-9*L); ctx.lineTo(-15*L,-1*L); ctx.closePath(); ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(-14*L,1.5*L); ctx.lineTo(-19*L,9*L); ctx.lineTo(-15*L,1*L); ctx.closePath(); ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(-13*L,0); ctx.lineTo(-19*L,0); ctx.lineTo(-19*L,-6*L); ctx.closePath(); ctx.fill();
+  // cockpit
+  ctx.fillStyle='rgba(200,235,255,.85)';
+  ctx.beginPath(); ctx.ellipse(9*L,0,3.2*L,2.2*L,0,0,7); ctx.fill();
+  // spinning propeller disc at nose
+  ctx.save(); ctx.translate(16*L,0); ctx.rotate(rotorSpin*3);
+  ctx.strokeStyle='rgba(50,50,50,.55)'; ctx.lineWidth=1.8;
+  ctx.beginPath(); ctx.moveTo(0,-9*L); ctx.lineTo(0,9*L); ctx.moveTo(-9*L,0); ctx.lineTo(9*L,0); ctx.stroke();
+  ctx.restore();
+}
+
+let last=performance.now();
+function loop(now){
+  const dt=Math.min(0.05,(now-last)/1000); last=now;
+  if(running && !ended){ update(dt); }
+  ctx.clearRect(0,0,W,H);
+  drawBg(); drawLake(); drawTrees(); drawFire(); drawSplashes(dt); drawPlane(); drawWind();
+  document.getElementById('timeLeft').textContent = Math.max(0,Math.ceil(timeLeft));
+  requestAnimationFrame(loop);
+}
+
+/* ---------- Mission end ---------- */
+function endMission(won){
+  ended=true; running=false;
+  const savedPct = initialFireCells>0 ? Math.max(0, Math.round(100*(1 - fireRemainingPct()/Math.max(peakBurning,initialFireCells)))) : 100;
+  const stars = savedPct>=85?3 : savedPct>=55?2 : savedPct>=25?1:0;
+  document.getElementById('endTitle').textContent = won? '🔥 Fire Contained!' : (stars>0? 'Mission Debrief':'Fire Got Away');
+  document.getElementById('endStars').textContent = '⭐'.repeat(stars)+'☆'.repeat(3-stars);
+  document.getElementById('endSummary').textContent = `You saved about ${savedPct}% of the forest.`;
+  const tip=randTip();
+  document.getElementById('endTip').innerHTML = `<b>${tip.t}:</b> ${tip.b}`;
+  if(savedPct>bestSaved){ bestSaved=savedPct; localStorage.setItem('sr_best', String(bestSaved)); }
+  document.getElementById('bestScore').textContent = Math.round(bestSaved)+'%';
+  if(stars>=2) sfxWin(); else sfxLose();
+  document.getElementById('endScreen').style.display='flex';
+}
+
+/* ---------- Screen wiring ---------- */
+document.getElementById('startBtn').onclick=()=>{
+  document.getElementById('startScreen').style.display='none';
+  document.getElementById('hud').style.display='flex';
+  initWorld(); ac();
+};
+document.getElementById('howBtn').onclick=()=>{ document.getElementById('howScreen').style.display='flex'; };
+document.getElementById('closeHow').onclick=()=>{ document.getElementById('howScreen').style.display='none'; };
+document.getElementById('retryBtn').onclick=()=>{
+  document.getElementById('endScreen').style.display='none';
+  initWorld();
+};
+document.getElementById('menuBtn').onclick=()=>{
+  document.getElementById('endScreen').style.display='none';
+  document.getElementById('hud').style.display='none';
+  document.getElementById('startScreen').style.display='flex';
+};
+
+requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
